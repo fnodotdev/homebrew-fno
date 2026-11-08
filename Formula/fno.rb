@@ -1,99 +1,78 @@
-# Homebrew formula for the `fno` CLI - the brew install channel (ab-d59d219a).
+# Homebrew formula for the `fno` CLI - the brew install channel.
 #
 # This is the canonical source of the formula. It is copied verbatim into the
 # own tap repo (github.com/<owner>/homebrew-fno) so `brew install <owner>/fno/fno`
 # resolves it. Keeping the source here lets CI parse + audit it and lets the
-# brew clean-machine smoke (cli/tests/smoke/brew_formula_smoke.sh) prove the
-# install + symlink mechanism against a freshly built local wheel.
+# brew clean-machine smoke (tests/smoke/brew_formula_smoke.sh) prove the
+# install + symlink mechanism against a freshly built release tarball.
 #
-# The "py-wheel flywheel" (shared with the cargo + fno.sh channels): `fno` is the
-# Python Typer CLI and only `fno-agents{,-daemon,-worker}` are Rust, so the
-# formula installs the published PyPI *platform wheel* (which already bundles all
-# three binaries as wheel `shared_scripts`) into a brew-managed venv. brew
-# provides Python (depends_on "python@3.13"); the wheel is the single artifact
-# source. brew owns the venv + symlinks, so `brew uninstall`/`brew upgrade` are
-# clean (Locked Decisions 2 + 3).
+# The binary-tarball flywheel (the wheel upgrade path): the formula installs
+# the release binary tarball (`fno-agents-macos-<arch>.tar.gz`, the same
+# artifact `fno update` verifies), so `brew upgrade` lands the binary install
+# directly and brew users ride the same channel the CLI updates from. No
+# Python dependency: the tarball carries the four Rust binaries and nothing
+# else, and the Python CLI (still shipped by the bridge wheel) self-provisions
+# on first use of a Python-side command. brew owns the keg + symlinks, so
+# `brew uninstall`/`brew upgrade` are clean (Locked Decisions 2 + 3).
 #
-# LAUNCH GATE: satisfied for 0.2.1 on both macOS arches. `fno` 0.2.1 is
-# published to PyPI (the shared gate with cargo + fno.sh), and the arm64 +
-# x86_64 `url` + `sha256` below are the real published wheels (kept in lockstep
-# on every release bump). The x86_64 macOS wheel is cross-built on the macos-14
-# runner (the native Intel macos-13 image is retired); see release-wheels.yml.
+# NOTE: this is the SEED snapshot. The live tap (bllshttng/homebrew-fno, what
+# `brew install` reads) is auto-bumped on every release by
+# scripts/release/update-homebrew-formula.py ; these values are just the
+# last-release snapshot, not the source of truth.
 #
-# Deps: an own-tap formula installs with network, so `pip install` resolves the
-# Python deps from PyPI at install time. (Vendoring deps as offline `resource`
-# blocks via `brew update-python-resources fno` is a future hardening only a
-# homebrew-core submission would require - out of scope for the own tap.)
+# Deps: none beyond macOS. The binaries are self-contained (the linux legs
+# build musl-static; the macOS legs link the system libc), so the formula
+# carries no depends_on rows and no network setup beyond brew's own fetch.
 class Fno < Formula
   desc "Autonomous delivery pipeline CLI (footnote)"
-  homepage "https://github.com/bllshttng/footnote"
+  homepage "https://github.com/fnodotdev/fno"
 
-  # The x86_64 wheel (macosx_10_12) is the top-level default so a `url` is ALWAYS
-  # defined - including on Linux, where the on_macos block is skipped. Homebrew
-  # validates url presence at load (before requirements), so without a top-level
-  # url a Linuxbrew user would hit a confusing `stable: url is missing` instead
-  # of the clean `depends_on :macos` refusal below. arm64 overrides this url (and
-  # adds its Sonoma floor) inside on_macos.
-  url "https://files.pythonhosted.org/packages/a7/fe/ecee8a714cab03ff029b85785d668c2d970442ef6897d3464067c016f458/fno-0.4.6-py3-none-macosx_10_12_x86_64.whl", using: :nounzip
-  # Explicit version: Homebrew's filename version-detect picks "64" out of the
-  # x86_64 default-url tag, not 0.2.1. Pin it so `brew info`/upgrade are correct.
-  version "0.4.6"
-  sha256 "4153cc1d254ae0091e0bf160111d03146cc528d8cc728deda0134f9dddc27302"
+  # The x86_64 tarball is the top-level default so a `url` is ALWAYS defined -
+  # including on Linux, where the on_macos block is skipped. Homebrew validates
+  # url presence at load (before requirements), so without a top-level url a
+  # Linuxbrew user would hit a confusing `stable: url is missing` instead of
+  # the clean `depends_on :macos` refusal below. arm64 overrides this url
+  # inside on_macos.
+  url "https://github.com/fnodotdev/fno/releases/download/v0.4.7/fno-agents-macos-x64.tar.gz"
+  # Explicit version: the release tarball name carries no version, so pin it
+  # for `brew info`/upgrade and the tap's own audit.
+  version "0.4.7"
+  sha256 "c1cbf232628cc66fa5d03713038ddfe338167083e2c184d515a3ae6f7f404f8d"
   license "Apache-2.0"
 
-  # Both macOS arches ship a wheel; the macOS floor is arch-conditional. The
-  # arm64 wheel is tagged macosx_15_0, so its Sequoia floor is pinned on arm only
-  # (an arm64 Mac on macOS 11-14 would otherwise pass and then hit an ugly pip
-  # "incompatible wheel" error); the x86_64 default targets macosx_10_12, so
-  # Intel needs no extra macOS gate beyond python@3.13's own. `depends_on :macos`
-  # refuses Linuxbrew, and the top-level url above makes that refusal the error a
-  # Linux user actually sees instead of "url is missing".
   depends_on :macos
-  depends_on "python@3.13"
 
-  # The wheel carries native Rust binaries, so the URL must match the host arch.
-  # `using: :nounzip` keeps the wheel a FILE: a .whl is a zip, and an unpacked
-  # wheel dir is not pip-installable (no build backend), so the install step
-  # below pip-installs the wheel file directly rather than the unpacked tree.
-  # arm64 overrides the top-level x86_64 default with its own wheel + floor.
   on_macos do
     on_arm do
-      # The arm64 wheel is tagged macosx_15_0, so it requires Sequoia; the x86_64
-      # default targets macosx_10_12, so this floor is arm-only.
-      depends_on macos: :sequoia
-      url "https://files.pythonhosted.org/packages/12/b3/b8d6a8bce1097ec5742cc0b868625cdc44108abbd97129456d7ad9fef07c/fno-0.4.6-py3-none-macosx_15_0_arm64.whl", using: :nounzip
-      sha256 "f9edc8966afc5b606b672fbe0bc89937af3078c4ae4719d2d83cc438a23d4bf7"
+      url "https://github.com/fnodotdev/fno/releases/download/v0.4.7/fno-agents-macos-arm64.tar.gz"
+      sha256 "f95986777f9c2fa8d2705056ae7c595d638f502d74fc75f19da94c37ec8f1cc3"
     end
   end
 
   def install
-    # Build the venv from the python@3.13 dependency (never the host python,
-    # which may be older on a clean machine).
-    system Formula["python@3.13"].opt_bin/"python3.13", "-m", "venv", libexec
-
-    # The wheel is a FILE in buildpath (url's :nounzip - an unpacked wheel dir is
-    # not pip-installable), so pip-install the wheel file directly. pip resolves
-    # the Python deps from PyPI (own-tap network). This is the mechanism the brew
-    # smoke exercises end to end.
-    system libexec/"bin/pip", "install", "--disable-pip-version-check", Dir["*.whl"].first
-
-    # The `fno` console_script plus the three Rust binaries (which ride in the
-    # wheel as `shared_scripts`) all land in the venv bin; pip links none of them
-    # into the keg bin, so symlink them explicitly. The fno-agents* symlink is
-    # the load-bearing step (Locked Decision 4): the CLI invokes the binaries by
-    # name on PATH. Arch-agnostic via libexec.
-    bin.install_symlink libexec/"bin/fno"
-    bin.install_symlink Dir[libexec/"bin/fno-agents*"]
+    # The release tarball carries the four binaries at its root (no wrapper
+    # dir), so brew's extraction lands them at buildpath. libexec holds them;
+    # the keg bin symlinks from there. The fno-agents* symlinks are the
+    # load-bearing step (Locked Decision 4): the CLI invokes the binaries by
+    # name on PATH. The `fno` symlink is the advertised front door: the Rust
+    # mux that owns `fno` on PATH.
+    libexec.install "fno", "fno-agents", "fno-agents-daemon", "fno-agents-worker"
+    bin.install_symlink libexec/"fno"
+    bin.install_symlink libexec/"fno-agents"
+    bin.install_symlink libexec/"fno-agents-daemon"
+    bin.install_symlink libexec/"fno-agents-worker"
   end
 
   test do
-    # The CLI runs from the keg bin.
-    assert_match "fno", shell_output("#{bin}/fno --version")
+    # The front door runs from the keg bin: `mux ls --json` is native (no
+    # Python needed), and an empty session list is exactly `[]` - a stable
+    # marker on a clean runner where `mux ls` would print "no sessions".
+    assert_match "[]", shell_output("#{bin}/fno mux ls --json")
 
-    # All three binaries must be present + executable on the keg bin, or a
-    # daemon/loop verb would 127 at runtime. Fail the test on any miss
-    # (no silent success for a half-installed CLI).
-    %w[fno-agents fno-agents-daemon fno-agents-worker].each do |b|
+    # All four Rust executables must be present + executable on the keg bin,
+    # or the front door or a daemon/loop command would 127 at runtime. Fail
+    # the test on any miss (no silent success for a half-installed CLI).
+    %w[fno fno-agents fno-agents-daemon fno-agents-worker].each do |b|
       assert_predicate bin/b, :executable?, "#{b} missing from the keg bin"
     end
   end
