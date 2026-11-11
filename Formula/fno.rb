@@ -33,19 +33,19 @@ class Fno < Formula
   # Linuxbrew user would hit a confusing `stable: url is missing` instead of
   # the clean `depends_on :macos` refusal below. arm64 overrides this url
   # inside on_macos.
-  url "https://github.com/fnodotdev/fno/releases/download/v0.4.7/fno-agents-macos-x64.tar.gz"
+  url "https://github.com/fnodotdev/fno/releases/download/v0.4.8/fno-agents-macos-x64.tar.gz"
   # Explicit version: the release tarball name carries no version, so pin it
   # for `brew info`/upgrade and the tap's own audit.
-  version "0.4.7"
-  sha256 "c1cbf232628cc66fa5d03713038ddfe338167083e2c184d515a3ae6f7f404f8d"
+  version "0.4.8"
+  sha256 "830241ba922effaddcb5fd8ce6d93876df718ea8e1381e35c84ced2abfee0e10"
   license "Apache-2.0"
 
   depends_on :macos
 
   on_macos do
     on_arm do
-      url "https://github.com/fnodotdev/fno/releases/download/v0.4.7/fno-agents-macos-arm64.tar.gz"
-      sha256 "f95986777f9c2fa8d2705056ae7c595d638f502d74fc75f19da94c37ec8f1cc3"
+      url "https://github.com/fnodotdev/fno/releases/download/v0.4.8/fno-agents-macos-arm64.tar.gz"
+      sha256 "1e8ba72a7ce466705845a523e38c96f3a70b4e29dadfbc35dbc5cf977ab7b2a5"
     end
   end
 
